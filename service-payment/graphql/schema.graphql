@@ -1,0 +1,73 @@
+"""
+A datetime string with format `Y-m-d H:i:s`, e.g. `2018-05-23 13:43:32`.
+"""
+scalar DateTime @scalar(class: "Nuwave\\Lighthouse\\Schema\\Types\\Scalars\\DateTime")
+
+"""
+A decimal string.
+"""
+scalar Decimal @scalar(class: "Nuwave\\Lighthouse\\Schema\\Types\\Scalars\\Decimal")
+
+"""
+Represents a payment transaction.
+"""
+type Payment {
+    """Unique primary key."""
+    id: ID!
+
+    """ID of the associated order."""
+    order_id: Int!
+
+    """Amount of the payment."""
+    amount: Decimal!
+
+    """Current status of the payment (e.g., pending, successful, failed)."""
+    status: String!
+
+    """Transaction ID from the payment gateway (if applicable)."""
+    transaction_id: String
+
+    """When the payment record was created."""
+    created_at: DateTime!
+
+    """When the payment record was last updated."""
+    updated_at: DateTime!
+}
+
+"""
+Indicates what fields are available at the top level of a query operation.
+"""
+type Query {
+    """Find a single payment by ID."""
+    payment(id: ID @eq): Payment @find
+
+    """List multiple payments."""
+    payments(
+        "Filter by order ID."
+        order_id: Int @eq
+        "Filter by status."
+        status: String @eq
+    ): [Payment!]! @paginate(defaultCount: 10)
+}
+
+"""
+Mutations for payments.
+"""
+type Mutation {
+    """Initiate a new payment process."""
+    createPayment(
+        order_id: Int! @rules(apply: ["required", "integer"])
+        amount: Decimal! @rules(apply: ["required", "numeric", "min:0"])
+    ): Payment @create(model: "App\\Models\\Payment")
+
+    # Typically, payment status is updated internally or via callbacks, not direct mutation.
+    # Example mutation to manually update status (for testing/admin):
+    # updatePaymentStatus(
+    #     id: ID! @rules(apply: ["required", "exists:payments,id"])
+    #     status: String! @rules(apply: ["required", "string", "in:pending,successful,failed"])
+    # ): Payment @update(model: "App\\Models\\Payment")
+}
+
+# The default User type is not needed here
+# type User { ... }
+

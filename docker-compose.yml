@@ -1,0 +1,193 @@
+version: '3.8'
+
+services:
+  # PostgreSQL database for application data
+  postgres:
+    image: postgres:15
+    container_name: postgres
+    restart: always
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-multiple-dbs.sh:/docker-entrypoint-initdb.d/init-multiple-dbs.sh
+    environment:
+      POSTGRES_PASSWORD: password
+      POSTGRES_USER: postgres
+      POSTGRES_MULTIPLE_DATABASES: service_auth_db,service_order_db,service_product_db,service_payment_db
+    ports:
+      - "5432:5432"
+    networks:
+      - microservices_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # RabbitMQ message broker
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    restart: always
+    ports:
+      - "5672:5672"   # AMQP protocol port
+      - "15672:15672" # Management UI port
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - microservices_network
+    healthcheck:
+      test: ["CMD", "rabbitmqctl", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Authentication Service
+  service-auth:
+    build:
+      context: ./service-auth
+      dockerfile: Dockerfile
+    container_name: service-auth
+    restart: always
+    ports:
+      - "8001:8000"  # Ekspos port 8000 container ke port 8001 host
+    volumes:
+      - ./service-auth:/var/www/html
+      - auth_storage:/var/www/html/storage
+    depends_on:
+      postgres: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    networks:
+      - microservices_network
+    command: php artisan serve --host=0.0.0.0 --port=8000
+    environment:
+      - APP_ENV=local
+      - APP_DEBUG=true
+      - DB_HOST=postgres
+      - RABBITMQ_HOST=rabbitmq
+      - AUTH_SERVICE_URL=http://service-auth:8000  
+
+  # Order Service
+  service-order:
+    build:
+      context: ./service-order
+      dockerfile: Dockerfile
+    container_name: service-order
+    restart: always
+    ports:
+      - "8002:8000"  # Ekspos port 8000 container ke port 8002 host
+    volumes:
+      - ./service-order:/var/www/html
+      - order_storage:/var/www/html/storage
+    depends_on:
+      postgres: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    networks:
+      - microservices_network
+    command: php artisan serve --host=0.0.0.0 --port=8000
+    environment:
+      - APP_ENV=local
+      - APP_DEBUG=true
+      - DB_HOST=postgres
+      - RABBITMQ_HOST=rabbitmq
+      - PRODUCT_SERVICE_URL=http://service-product:8000  
+
+  # Product Service
+  service-product:
+    build:
+      context: ./service-product
+      dockerfile: Dockerfile
+    container_name: service-product
+    restart: always
+    ports:
+      - "8003:8000"  # Ekspos port 8000 container ke port 8003 host
+    volumes:
+      - ./service-product:/var/www/html
+      - product_storage:/var/www/html/storage
+    depends_on:
+      postgres: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    networks:
+      - microservices_network
+    command: php artisan serve --host=0.0.0.0 --port=8000
+    environment:
+      - APP_ENV=local
+      - APP_DEBUG=true
+      - DB_HOST=postgres
+      - RABBITMQ_HOST=rabbitmq
+
+  # Payment Service
+  service-payment:
+    build:
+      context: ./service-payment
+      dockerfile: Dockerfile
+    container_name: service-payment
+    restart: always
+    ports:
+      - "8004:8000"  # Ekspos port 8000 container ke port 8004 host
+    volumes:
+      - ./service-payment:/var/www/html
+      - payment_storage:/var/www/html/storage
+    depends_on:
+      postgres: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    networks:
+      - microservices_network
+    command: php artisan serve --host=0.0.0.0 --port=8000
+    environment:
+      - APP_ENV=local
+      - APP_DEBUG=true
+      - DB_HOST=postgres
+      - RABBITMQ_HOST=rabbitmq
+
+
+  # PostgreSQL database for Hasura metadata
+  postgres-hasura-metadata:
+    image: postgres:15
+    container_name: postgres_hasura_metadata
+    restart: always
+    volumes:
+      - hasura_metadata_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_PASSWORD: your_strong_metadata_password
+    networks:
+      - microservices_network
+
+  # Hasura GraphQL Engine
+  graphql-engine:
+    image: hasura/graphql-engine:v2.38.0
+    container_name: hasura_graphql_engine
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres-hasura-metadata
+      - postgres
+    restart: always
+    environment:
+      HASURA_GRAPHQL_DATABASE_URL: postgresql://postgres:your_strong_metadata_password@postgres-hasura-metadata:5432/postgres
+      HASURA_GRAPHQL_ADMIN_SECRET: your_very_secure_admin_secret
+      HASURA_GRAPHQL_ENABLE_CONSOLE: "true"
+      # Add data sources for each service database
+      HASURA_GRAPHQL_METADATA_DATABASE_URL: postgresql://postgres:your_strong_metadata_password@postgres-hasura-metadata:5432/postgres
+      # Additional environment variables for connecting to service databases
+      PG_DATABASE_URL_AUTH: postgresql://postgres:password@postgres:5432/service_auth_db
+      PG_DATABASE_URL_ORDER: postgresql://postgres:password@postgres:5432/service_order_db
+      PG_DATABASE_URL_PRODUCT: postgresql://postgres:password@postgres:5432/service_product_db
+      PG_DATABASE_URL_PAYMENT: postgresql://postgres:password@postgres:5432/service_payment_db
+    networks:
+      - microservices_network
+
+volumes:
+  postgres_data:
+  rabbitmq_data:
+  auth_storage:
+  order_storage:
+  product_storage:
+  payment_storage:
+  hasura_metadata_data:
+
+networks:
+  microservices_network:
+    driver: bridge

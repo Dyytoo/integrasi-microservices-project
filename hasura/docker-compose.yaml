@@ -1,0 +1,54 @@
+# docker-compose.yaml for Hasura GraphQL Engine
+# Location: /home/ubuntu/microservices-project/hasura/docker-compose.yaml
+
+version: '3.8'
+
+services:
+  # PostgreSQL database for Hasura metadata
+  postgres_hasura_metadata:
+    image: postgres:15 # Use a specific version
+    container_name: postgres_hasura_metadata
+    restart: always
+    volumes:
+      - hasura_metadata_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_PASSWORD: passsword # Use a strong password
+    networks:
+      - microservices_network
+
+  # Hasura GraphQL Engine
+  graphql-engine:
+    image: hasura/graphql-engine:v2.38.0 # Use a specific version
+    container_name: hasura_graphql_engine
+    ports:
+      - "8080:8080" # Expose Hasura console/API on host port 8080
+    depends_on:
+      - postgres_hasura_metadata
+    restart: always
+    environment:
+      ## Database URL for Hasura metadata
+      HASURA_GRAPHQL_DATABASE_URL: postgresql://postgres:your_strong_metadata_password@postgres_hasura_metadata:5432/postgres
+      ## Admin secret for Hasura console
+      HASURA_GRAPHQL_ADMIN_SECRET: your_very_secure_admin_secret # Use a strong secret
+      ## Enable console
+      HASURA_GRAPHQL_ENABLE_CONSOLE: "true"
+
+      HASURA_GRAPHQL_AUTH_SERVICE_URL: http://service-auth:8000
+      HASURA_GRAPHQL_ORDER_SERVICE_URL: http://service-order:8000
+      HASURA_GRAPHQL_PRODUCT_SERVICE_URL: http://service-product:8000
+      HASURA_GRAPHQL_PAYMENT_SERVICE_URL: http://service-payment:8000
+
+      ## JWT secret (if using JWT auth with Hasura later)
+      # HASURA_GRAPHQL_JWT_SECRET: '{"type": "HS256", "key": "your_jwt_secret_key"}'
+      ## Uncomment below lines if you need to connect to other databases automatically on startup
+      # HASURA_GRAPHQL_METADATA_DATABASE_URL: postgresql://postgres:your_strong_metadata_password@postgres_hasura_metadata:5432/postgres
+    networks:
+      - microservices_network
+
+volumes:
+  hasura_metadata_data:
+
+networks:
+  microservices_network:
+    driver: bridge
+    name: microservices_network # Define a common network

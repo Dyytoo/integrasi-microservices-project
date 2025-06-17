@@ -1,0 +1,84 @@
+"""
+A datetime string with format `Y-m-d H:i:s`, e.g. `2018-05-23 13:43:32`.
+"""
+scalar DateTime @scalar(class: "Nuwave\\Lighthouse\\Schema\\Types\\Scalars\\DateTime")
+
+"""
+A decimal string.
+"""
+scalar Decimal @scalar(class: "Nuwave\\Lighthouse\\Schema\\Types\\Scalars\\Decimal")
+
+"""
+Represents a customer order.
+"""
+type Order {
+    """Unique primary key."""
+    id: ID!
+
+    """ID of the user who placed the order."""
+    user_id: Int!
+
+    """ID of the product ordered."""
+    product_id: Int!
+
+    """Quantity of the product ordered."""
+    quantity: Int!
+
+    """Total price of the order."""
+    total_price: Decimal!
+
+    """Current status of the order."""
+    status: String!
+
+    """When the order was created."""
+    created_at: DateTime!
+
+    """When the order was last updated."""
+    updated_at: DateTime!
+}
+
+"""
+Indicates what fields are available at the top level of a query operation.
+"""
+type Query {
+    """Find a single order by ID."""
+    order(id: ID @eq): Order @find
+
+    """List multiple orders."""
+    orders(
+        "Filter by user ID."
+        user_id: Int @eq
+        "Filter by status."
+        status: String @eq
+    ): [Order!]! @paginate(defaultCount: 10)
+}
+
+"""
+Mutations for orders.
+"""
+type Mutation {
+    """Create a new order."""
+    createOrder(
+        user_id: Int! @rules(apply: ["required", "integer"])
+        product_id: Int! @rules(apply: ["required", "integer"])
+        quantity: Int! @rules(apply: ["required", "integer", "min:1"])
+        total_price: Decimal! @rules(apply: ["required", "numeric", "min:0"])
+    ): Order @create(model: "App\\Models\\Order")
+
+    """Update an existing order."""
+    updateOrder(
+        id: ID! @rules(apply: ["required", "exists:orders,id"])
+        user_id: Int @rules(apply: ["sometimes", "required", "integer"])
+        product_id: Int @rules(apply: ["sometimes", "required", "integer"])
+        quantity: Int @rules(apply: ["sometimes", "required", "integer", "min:1"])
+        total_price: Decimal @rules(apply: ["sometimes", "required", "numeric", "min:0"])
+        status: String @rules(apply: ["sometimes", "required", "string", "in:pending,processing,completed,cancelled"])
+    ): Order @update(model: "App\\Models\\Order")
+
+    """Delete an order."""
+    deleteOrder(id: ID! @rules(apply: ["required", "exists:orders,id"])): Order @delete(model: "App\\Models\\Order")
+}
+
+# The default User type is not needed here unless orders relate to users within this service
+# type User { ... }
+
